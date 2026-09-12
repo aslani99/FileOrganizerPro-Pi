@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#111827" />
+<title>File Organizer Pro — سازماندهی هوشمند فایل‌ها</title>
+<meta name="description" content="سازماندهی هوشمند فایل‌های ویندوز با کپی امن، تشخیص تکراری و سازماندهی پیوسته." />
+<link rel="stylesheet" href="assets/style.css" />
+<script src="https://sdk.minepi.com/pi-sdk.js"></script>
+<script src="config.js"></script>
+</head>
+<body>
+<div class="page-shell">
+  <header class="site-header">
+    <a class="brand" href="#" aria-label="File Organizer Pro">
+      <span class="brand-mark">F</span>
+      <span>
+        <strong>File Organizer Pro</strong>
+        <small>Smart file organization</small>
+      </span>
+    </a>
+    <nav class="site-nav" aria-label="ناوبری">
+      <a href="#features">قابلیت‌ها</a>
+      <a href="#pricing">پلن‌ها</a>
+      <a href="#pi">Pi</a>
+      <a href="#download">دانلود</a>
+    </nav>
+    <button id="piAuthButton" class="btn btn-outline btn-small" type="button">ورود با Pi</button>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="eyebrow">WINDOWS • PI TESTNET READY</div>
+      <h1>فایل‌های شلوغ ویندوز را <span>هوشمندانه</span> مرتب کنید.</h1>
+      <p>File Organizer Pro فایل‌های شما را بر اساس نوع و قوانین انتخابی سازماندهی می‌کند؛ با تمرکز روی سرعت، امنیت و حفظ فایل‌های اصلی.</p>
+      <div class="btn-row">
+        <a id="heroDownload" href="#download" class="btn btn-primary">دانلود برای ویندوز</a>
+        <a href="#pricing" class="btn btn-outline">مشاهده پلن‌ها</a>
+      </div>
+      <div id="piStatus" class="pi-status" role="status" aria-live="polite">در حال آماده‌سازی اتصال Pi...</div>
+    </section>
+
+    <section id="features" class="section">
+      <div class="section-heading">
+        <span class="section-kicker">CORE FEATURES</span>
+        <h2>همه‌چیز برای یک سازماندهی تمیز</h2>
+        <p>یک ابزار دسکتاپ واقعی، نه فقط یک فایل‌مرتب‌کن ساده.</p>
+      </div>
+      <div class="feature-grid">
+        <article class="card feature-card"><div class="icon">🗂️</div><h3>دسته‌بندی هوشمند</h3><p>عکس، ویدیو، صدا، سند، آرشیو، کد و انواع دیگر در ساختار منظم قرار می‌گیرند.</p></article>
+        <article class="card feature-card"><div class="icon">🧬</div><h3>تشخیص تکراری</h3><p>فایل‌های تکراری بر اساس محتوای واقعی شناسایی می‌شوند، نه فقط نام فایل.</p></article>
+        <article class="card feature-card"><div class="icon">👁️</div><h3>سازماندهی پیوسته</h3><p>پوشه را پایش کنید تا فایل‌های جدید نیز به‌صورت خودکار پردازش شوند.</p></article>
+        <article class="card feature-card"><div class="icon">🛡️</div><h3>حفاظت از مبدأ</h3><p>در حالت کپی، فایل اصلی دست‌نخورده می‌ماند و نسخه سازمان‌یافته ساخته می‌شود.</p></article>
+        <article class="card feature-card"><div class="icon">📊</div><h3>گزارش و آمار</h3><p>نتیجه عملیات، حجم پردازش‌شده، تکراری‌ها و خطاها را شفاف مشاهده کنید.</p></article>
+        <article class="card feature-card"><div class="icon">🌐</div><h3>چندزبانه</h3><p>رابط کاربری چندزبانه با پشتیبانی کامل از زبان‌های راست‌به‌چپ.</p></article>
+      </div>
+    </section>
+
+    <section id="pi" class="section pi-section">
+      <div class="pi-panel">
+        <div>
+          <span class="section-kicker">PI NETWORK</span>
+          <h2>اتصال آماده برای Pi Browser</h2>
+          <p id="piDescription">این نسخه برای محیط Testnet/Sandbox آماده شده است. ورود با Pi مستقیماً با Pi SDK انجام می‌شود.</p>
+        </div>
+        <div class="pi-actions">
+          <div id="piUser" class="pi-user hidden"></div>
+          <button id="piAuthButtonSecondary" class="btn btn-primary" type="button">ورود امن با Pi</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="pricing" class="section">
+      <div class="section-heading">
+        <span class="section-kicker">PLANS</span>
+        <h2>پلن مناسب خودتان را انتخاب کنید</h2>
+        <p>قیمت‌ها از همان منبع مرکزی پلن‌های File Organizer Pro خوانده می‌شوند.</p>
+      </div>
+      <div class="plan-grid" id="pricingGrid">
+        <div class="card loading-card">در حال دریافت پلن‌ها...</div>
+      </div>
+    </section>
+
+    <section id="download" class="section download-section">
+      <div class="download-card">
+        <span class="section-kicker">GET STARTED</span>
+        <h2>مرتب‌سازی را شروع کنید</h2>
+        <p>نسخه دسکتاپ File Organizer Pro برای Windows 10/11 طراحی شده است. نسخه رایگان را امتحان کنید و هر زمان خواستید ارتقا دهید.</p>
+        <a id="downloadButton" href="#" class="btn btn-primary">دانلود File Organizer Pro</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div>© <span id="year"></span> File Organizer Pro</div>
+    <div><a href="privacy.html">حریم خصوصی</a><a href="terms.html">قوانین استفاده</a></div>
+    <div class="footer-note">Pi integration: Testnet / Sandbox</div>
+  </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
