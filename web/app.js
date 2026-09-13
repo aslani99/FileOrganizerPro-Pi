@@ -2,6 +2,8 @@
   "use strict";
 
   const config = window.FOP_CONFIG || {};
+  const piSandbox = false;
+  const piEnvironment = "testnet-production-url";
   const $ = (id) => document.getElementById(id);
 
   const piStatus = $("piStatus");
@@ -58,7 +60,7 @@
     if (!piDebugMeta) return;
     const items = [
       ["Environment", config.ENVIRONMENT || "نامشخص"],
-      ["Pi Sandbox", String(Boolean(config.PI_SANDBOX))],
+      ["Pi Sandbox", String(piSandbox)],
       ["Hostname", location.hostname || "نامشخص"],
       ["Protocol", location.protocol || "نامشخص"],
       ["Pi SDK object", window.Pi ? "موجود" : "موجود نیست"],
@@ -96,8 +98,8 @@
     debugLog("Pi initialization started", {
       piObjectPresent: Boolean(window.Pi),
       authenticateFunction: typeof window.Pi?.authenticate === "function",
-      sandbox: Boolean(config.PI_SANDBOX),
-      environment: config.ENVIRONMENT || "unknown",
+      sandbox: piSandbox,
+      environment: piEnvironment,
       hostname: location.hostname,
     });
     if (!window.Pi) {
@@ -110,7 +112,7 @@
     try {
       await window.Pi.init({
         version: "2.0",
-        sandbox: Boolean(config.PI_SANDBOX),
+        sandbox: piSandbox,
       });
       piReady = true;
       renderDebugMeta();
@@ -120,7 +122,7 @@
         piReady: true,
       });
       setPiStatus(
-        config.PI_SANDBOX
+        piSandbox
           ? "Pi SDK آماده است — محیط Testnet / Sandbox"
           : "Pi SDK آماده است — محیط Production"
       );
@@ -134,6 +136,11 @@
 
   async function authenticateWithPi() {
     if (!piReady || !window.Pi) {
+      debugLog("Pi authentication blocked", {
+        piReady,
+        piObjectPresent: Boolean(window.Pi),
+        error: true,
+      });
       setPiStatus("این قابلیت فقط داخل Pi Browser در دسترس است.", true);
       return;
     }
@@ -147,14 +154,37 @@
     });
 
     try {
-      const auth = await window.Pi.authenticate(
-        ["username", "payments"],
+      const authPromise = window.Pi.authenticate(
+        ["username"],
         (incompletePayment) => {
           // Payment recovery is intentionally not performed in this static frontend.
           // The authoritative recovery flow remains on the verified desktop checkout.
           console.info("Pi reported an incomplete payment:", incompletePayment?.identifier);
         }
       );
+
+      debugLog("Pi.authenticate called", {
+        returnedPromise: Boolean(authPromise && typeof authPromise.then === "function"),
+      });
+
+      if (!authPromise || typeof authPromise.then !== "function") {
+        throw new Error("Pi.authenticate did not return a Promise");
+      }
+
+      const timeoutPromise = new Promise((_, reject) => {
+        window.setTimeout(() => {
+          reject(new Error("Pi authentication timed out"));
+        }, 20000);
+      });
+
+      const auth = await Promise.race([authPromise, timeoutPromise]);
+
+      debugLog("Pi.authenticate resolved", {
+        responseKeys: auth && typeof auth === "object" ? Object.keys(auth) : [],
+        userPresent: Boolean(auth?.user),
+        userKeys: auth?.user && typeof auth.user === "object" ? Object.keys(auth.user) : [],
+        accessTokenPresent: Boolean(auth?.accessToken),
+      });
 
       piUserData = auth?.user || null;
       const username = piUserData?.username || "Pioneer";
@@ -170,7 +200,21 @@
       setPiStatus(`ورود با Pi موفق بود — ${username}`);
     } catch (error) {
       console.error("Pi.authenticate failed", error);
-      setPiStatus("ورود با Pi لغو شد یا با خطا مواجه شد.", true);
+      debugLog("Pi.authenticate failed", { ...safeError(error), error: true });
+      if (error?.message === "Pi authentication timed out") {
+        debugLog("Pi authentication timeout", {
+          timeoutMs: 20000,
+          sandbox: piSandbox,
+          environment: piEnvironment,
+          error: true,
+        });
+        setPiStatus(
+          "احراز هویت Pi پاسخ نداد. Pi Browser را باز نگه دارید و دوباره تلاش کنید.",
+          true
+        );
+      } else {
+        setPiStatus("ورود با Pi لغو شد یا با خطا مواجه شد.", true);
+      }
     } finally {
       setAuthBusy(false);
     }
