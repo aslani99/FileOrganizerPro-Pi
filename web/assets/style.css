@@ -73,7 +73,10 @@ button { cursor:pointer; }
 .pi-debug-meta-item strong { color:var(--muted); font-size:10px; margin-bottom:2px; }
 .pi-debug-meta-item span { font-size:12px; overflow-wrap:anywhere; }
 .pi-debug-log { margin:0; min-height:180px; max-height:360px; overflow:auto; padding:14px; border-radius:12px; background:#070b15; border:1px solid var(--border); color:#d7def0; direction:ltr; text-align:left; white-space:pre-wrap; word-break:break-word; font:12px/1.65 Consolas,"Courier New",monospace; }
-.plan-card { position:relative; text-align:center; padding:26px 20px; }
+.plan-card { position:relative; text-align:center; padding:26px 20px; transition:.18s ease; }
+.plan-card:hover { transform:translateY(-2px); border-color:rgba(139,92,246,.38); }
+.plan-card.is-selected { border-color:rgba(139,92,246,.72); box-shadow:0 20px 55px rgba(99,102,241,.16); }
+.plan-select-button { width:100%; margin-top:18px; }
 .plan-card .badge { position:absolute; top:-10px; inset-inline-start:50%; transform:translateX(50%); background:var(--accent); color:#fff; border-radius:999px; padding:3px 10px; font-size:10px; }
 .plan-card h3 { margin:4px 0 12px; font-size:18px; }
 .plan-price { font-size:34px; font-weight:900; }

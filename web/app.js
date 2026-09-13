@@ -11,6 +11,7 @@
   const authButtons = [$("piAuthButton"), $("piAuthButtonSecondary")].filter(Boolean);
   let piReady = false;
   let piUserData = null;
+  let selectedPlan = null;
   const piDebugLog = $("piDebugLog");
   const piDebugMeta = $("piDebugMeta");
   const piDebugState = $("piDebugState");
@@ -274,7 +275,14 @@
           ? `تا ${(bytes / 1024 / 1024 / 1024).toFixed(1)} گیگابایت`
           : "بدون سقف حجمی";
 
-        card.append(title, price, limit);
+        const action = document.createElement("button");
+        action.type = "button";
+        action.className = "btn btn-primary plan-select-button";
+        action.dataset.planId = String(plan.id ?? "");
+        action.textContent = "انتخاب و خرید";
+        action.addEventListener("click", () => selectPlan(plan));
+
+        card.append(title, price, limit, action);
         grid.appendChild(card);
       });
     } catch (error) {
@@ -285,6 +293,34 @@
       fallback.textContent = "پلن‌ها در حال حاضر در دسترس نیستند. لطفاً دوباره تلاش کنید.";
       grid.appendChild(fallback);
     }
+  }
+
+  async function selectPlan(plan) {
+    selectedPlan = plan;
+    document.querySelectorAll(".plan-card.is-selected").forEach((card) => {
+      card.classList.remove("is-selected");
+    });
+
+    const clickedButton = document.querySelector(
+      `.plan-select-button[data-plan-id="${CSS.escape(String(plan.id ?? ""))}"]`
+    );
+    clickedButton?.closest(".plan-card")?.classList.add("is-selected");
+
+    debugLog("Plan selected", {
+      planId: plan.id ?? null,
+      planName: plan.name ?? null,
+      priceUsd: plan.price_usd ?? null,
+    });
+
+    if (!piUserData) {
+      setPiStatus(`پلن «${plan.name || "انتخاب‌شده"}» انتخاب شد. ابتدا با Pi وارد شوید.`);
+      await authenticateWithPi();
+      if (!piUserData) return;
+    }
+
+    setPiStatus(
+      `پلن «${plan.name || "انتخاب‌شده"}» انتخاب شد. آماده ادامه فرایند پرداخت هستید.`
+    );
   }
 
   function wireDownload() {
