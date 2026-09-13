@@ -71,6 +71,25 @@
       </div>
     </section>
 
+    <section id="piDebug" class="section pi-debug-section">
+      <div class="section-heading">
+        <span class="section-kicker">PI DIAGNOSTICS</span>
+        <h2>گزارش عیب‌یابی اتصال Pi</h2>
+        <p>برای پیدا کردن علت خطای ورود، رویدادهای Pi SDK اینجا ثبت می‌شوند. توکن دسترسی یا اطلاعات حساس نمایش داده نمی‌شود.</p>
+      </div>
+      <div class="pi-debug-card card">
+        <div class="pi-debug-toolbar">
+          <span id="piDebugState" class="pi-debug-state">در حال جمع‌آوری اطلاعات...</span>
+          <div class="pi-debug-actions">
+            <button id="piDebugCopy" class="btn btn-outline btn-small" type="button">کپی گزارش</button>
+            <button id="piDebugClear" class="btn btn-outline btn-small" type="button">پاک کردن</button>
+          </div>
+        </div>
+        <div id="piDebugMeta" class="pi-debug-meta"></div>
+        <pre id="piDebugLog" class="pi-debug-log" aria-live="polite"></pre>
+      </div>
+    </section>
+
     <section id="pricing" class="section">
       <div class="section-heading">
         <span class="section-kicker">PLANS</span>

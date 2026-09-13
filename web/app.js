@@ -9,6 +9,74 @@
   const authButtons = [$("piAuthButton"), $("piAuthButtonSecondary")].filter(Boolean);
   let piReady = false;
   let piUserData = null;
+  const piDebugLog = $("piDebugLog");
+  const piDebugMeta = $("piDebugMeta");
+  const piDebugState = $("piDebugState");
+  const debugEntries = [];
+
+  function safeError(error) {
+    if (!error) return { message: "Unknown error" };
+    return {
+      name: error.name || "Error",
+      message: error.message || String(error),
+      code: error.code ?? null,
+    };
+  }
+
+  function debugLog(event, details = {}) {
+    const entry = {
+      time: new Date().toISOString(),
+      event,
+      ...details,
+    };
+    debugEntries.push(entry);
+    if (debugEntries.length > 80) debugEntries.shift();
+    if (piDebugLog) {
+      piDebugLog.textContent = debugEntries
+        .map((item) => {
+          const detailsText = Object.fromEntries(
+            Object.entries(item).filter(([key]) => key !== "time" && key !== "event")
+          );
+          return `${item.time} | ${item.event}${Object.keys(detailsText).length ? ` | ${JSON.stringify(detailsText)}` : ""}`;
+        })
+        .join("\n");
+      piDebugLog.scrollTop = piDebugLog.scrollHeight;
+    }
+    if (details.error) {
+      if (piDebugState) {
+        piDebugState.textContent = "خطا ثبت شد — گزارش را برای بررسی ارسال کنید.";
+        piDebugState.classList.add("error");
+      }
+    } else if (piDebugState) {
+      piDebugState.textContent = `آخرین رویداد: ${event}`;
+      piDebugState.classList.remove("error");
+    }
+    console.info("[FOP Pi Diagnostics]", entry);
+  }
+
+  function renderDebugMeta() {
+    if (!piDebugMeta) return;
+    const items = [
+      ["Environment", config.ENVIRONMENT || "نامشخص"],
+      ["Pi Sandbox", String(Boolean(config.PI_SANDBOX))],
+      ["Hostname", location.hostname || "نامشخص"],
+      ["Protocol", location.protocol || "نامشخص"],
+      ["Pi SDK object", window.Pi ? "موجود" : "موجود نیست"],
+      ["Pi.authenticate", typeof window.Pi?.authenticate === "function" ? "موجود" : "موجود نیست"],
+      ["Pi ready", String(piReady)],
+      ["User agent", navigator.userAgent || "نامشخص"],
+    ];
+    piDebugMeta.replaceChildren(...items.map(([label, value]) => {
+      const item = document.createElement("div");
+      item.className = "pi-debug-meta-item";
+      const strong = document.createElement("strong");
+      strong.textContent = label;
+      const span = document.createElement("span");
+      span.textContent = value;
+      item.append(strong, span);
+      return item;
+    }));
+  }
 
   function setPiStatus(message, error = false) {
     if (!piStatus) return;
@@ -24,8 +92,18 @@
   }
 
   async function initPi() {
+    renderDebugMeta();
+    debugLog("Pi initialization started", {
+      piObjectPresent: Boolean(window.Pi),
+      authenticateFunction: typeof window.Pi?.authenticate === "function",
+      sandbox: Boolean(config.PI_SANDBOX),
+      environment: config.ENVIRONMENT || "unknown",
+      hostname: location.hostname,
+    });
     if (!window.Pi) {
+      debugLog("Pi SDK object is missing", { error: true });
       setPiStatus("برای استفاده از قابلیت Pi، این صفحه را داخل Pi Browser باز کنید.", true);
+      renderDebugMeta();
       return;
     }
 
@@ -35,6 +113,12 @@
         sandbox: Boolean(config.PI_SANDBOX),
       });
       piReady = true;
+      renderDebugMeta();
+      debugLog("Pi.init succeeded", {
+        piObjectPresent: true,
+        authenticateFunction: typeof window.Pi.authenticate === "function",
+        piReady: true,
+      });
       setPiStatus(
         config.PI_SANDBOX
           ? "Pi SDK آماده است — محیط Testnet / Sandbox"
@@ -42,6 +126,8 @@
       );
     } catch (error) {
       console.error("Pi.init failed", error);
+      debugLog("Pi.init failed", { ...safeError(error), error: true });
+      renderDebugMeta();
       setPiStatus("راه‌اندازی Pi انجام نشد. دوباره صفحه را باز کنید.", true);
     }
   }
@@ -54,28 +140,21 @@
 
     setAuthBusy(true);
     setPiStatus("در حال احراز هویت امن با Pi...");
+    debugLog("Pi authentication started", {
+      piReady,
+      authenticateFunction: typeof window.Pi?.authenticate === "function",
+      scopes: ["username"],
+    });
 
     try {
-      // Login only needs the username scope. Requesting the payments scope here
-      // can trigger an unnecessary payment-related authorization flow and may leave
-      // the login state waiting indefinitely inside Pi Browser. Payment authorization
-      // should be requested only when the user actually starts a payment.
-      const authPromise = window.Pi.authenticate(
-        ["username"],
+      const auth = await window.Pi.authenticate(
+        ["username", "payments"],
         (incompletePayment) => {
           // Payment recovery is intentionally not performed in this static frontend.
           // The authoritative recovery flow remains on the verified desktop checkout.
           console.info("Pi reported an incomplete payment:", incompletePayment?.identifier);
         }
       );
-
-      const timeoutPromise = new Promise((_, reject) => {
-        window.setTimeout(() => {
-          reject(new Error("Pi authentication timed out"));
-        }, 20000);
-      });
-
-      const auth = await Promise.race([authPromise, timeoutPromise]);
 
       piUserData = auth?.user || null;
       const username = piUserData?.username || "Pioneer";
@@ -91,14 +170,7 @@
       setPiStatus(`ورود با Pi موفق بود — ${username}`);
     } catch (error) {
       console.error("Pi.authenticate failed", error);
-      if (error?.message === "Pi authentication timed out") {
-        setPiStatus(
-          "احراز هویت Pi پاسخ نداد. Pi Browser را باز نگه دارید و دوباره تلاش کنید.",
-          true
-        );
-      } else {
-        setPiStatus("ورود با Pi لغو شد یا با خطا مواجه شد.", true);
-      }
+      setPiStatus("ورود با Pi لغو شد یا با خطا مواجه شد.", true);
     } finally {
       setAuthBusy(false);
     }
@@ -179,9 +251,51 @@
     if (hero && url !== "#") hero.href = "#download";
   }
 
+  window.addEventListener("error", (event) => {
+    debugLog("Unhandled browser error", {
+      message: event.message || "Unknown browser error",
+      source: event.filename || "unknown",
+      line: event.lineno || null,
+      column: event.colno || null,
+      error: true,
+    });
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    debugLog("Unhandled promise rejection", {
+      ...safeError(event.reason),
+      error: true,
+    });
+  });
+
+  $("piDebugClear")?.addEventListener("click", () => {
+    debugEntries.length = 0;
+    if (piDebugLog) piDebugLog.textContent = "";
+    if (piDebugState) {
+      piDebugState.textContent = "گزارش پاک شد.";
+      piDebugState.classList.remove("error");
+    }
+    debugLog("Diagnostic log cleared");
+  });
+
+  $("piDebugCopy")?.addEventListener("click", async () => {
+    const text = piDebugLog?.textContent || "No diagnostics available.";
+    try {
+      await navigator.clipboard.writeText(text);
+      if (piDebugState) piDebugState.textContent = "گزارش کپی شد.";
+    } catch (error) {
+      debugLog("Copy diagnostics failed", { ...safeError(error), error: true });
+    }
+  });
+
   authButtons.forEach((button) => button.addEventListener("click", authenticateWithPi));
   $("year").textContent = new Date().getFullYear();
   wireDownload();
+  renderDebugMeta();
+  debugLog("Page loaded", {
+    href: location.href,
+    referrer: document.referrer || "",
+  });
   initPi();
   loadPlans();
 })();
