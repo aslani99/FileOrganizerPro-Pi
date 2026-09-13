@@ -56,14 +56,26 @@
     setPiStatus("در حال احراز هویت امن با Pi...");
 
     try {
-      const auth = await window.Pi.authenticate(
-        ["username", "payments"],
+      // Login only needs the username scope. Requesting the payments scope here
+      // can trigger an unnecessary payment-related authorization flow and may leave
+      // the login state waiting indefinitely inside Pi Browser. Payment authorization
+      // should be requested only when the user actually starts a payment.
+      const authPromise = window.Pi.authenticate(
+        ["username"],
         (incompletePayment) => {
           // Payment recovery is intentionally not performed in this static frontend.
           // The authoritative recovery flow remains on the verified desktop checkout.
           console.info("Pi reported an incomplete payment:", incompletePayment?.identifier);
         }
       );
+
+      const timeoutPromise = new Promise((_, reject) => {
+        window.setTimeout(() => {
+          reject(new Error("Pi authentication timed out"));
+        }, 20000);
+      });
+
+      const auth = await Promise.race([authPromise, timeoutPromise]);
 
       piUserData = auth?.user || null;
       const username = piUserData?.username || "Pioneer";
@@ -79,7 +91,14 @@
       setPiStatus(`ورود با Pi موفق بود — ${username}`);
     } catch (error) {
       console.error("Pi.authenticate failed", error);
-      setPiStatus("ورود با Pi لغو شد یا با خطا مواجه شد.", true);
+      if (error?.message === "Pi authentication timed out") {
+        setPiStatus(
+          "احراز هویت Pi پاسخ نداد. Pi Browser را باز نگه دارید و دوباره تلاش کنید.",
+          true
+        );
+      } else {
+        setPiStatus("ورود با Pi لغو شد یا با خطا مواجه شد.", true);
+      }
     } finally {
       setAuthBusy(false);
     }
