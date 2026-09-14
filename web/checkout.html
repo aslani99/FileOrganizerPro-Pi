@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FileOrganizerPro Checkout</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #f5f5f5;
+      color: #1f1f1f;
+    }
+    main {
+      width: min(92vw, 520px);
+      box-sizing: border-box;
+      padding: 28px;
+      border-radius: 18px;
+      background: #fff;
+      box-shadow: 0 8px 30px rgba(0,0,0,.12);
+      text-align: center;
+    }
+    h1 { margin: 0 0 12px; font-size: 24px; }
+    #status { margin: 14px 0; line-height: 1.6; }
+    #details { margin: 16px 0; }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 20px;
+      font: inherit;
+      cursor: pointer;
+      background: #6f42c1;
+      color: white;
+    }
+    button:disabled { opacity: .55; cursor: default; }
+    .hidden { display: none; }
+    .error { color: #b42318; }
+    .success { color: #067647; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #121212; color: #f1f1f1; }
+      main { background: #1e1e1e; }
+    }
+  </style>
+  <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+</head>
+<body>
+  <main>
+    <h1>FileOrganizerPro</h1>
+    <div id="status">Loading checkout…</div>
+    <div id="details"></div>
+    <button id="payButton" class="hidden" type="button">Pay with Pi</button>
+  </main>
+
+<script>
+(function () {
+  "use strict";
+
+  const SUPABASE_URL = "https://folgwdsswsoykukxubzf.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZvbGd3ZHNzd3NveWt1a3h1YnpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc0OTY4ODEsImV4cCI6MjEwMzA3Mjg4MX0.JDl16QxYktbbkPicbszre_a8De7UmMNWfh-679yxmQE";
+  const PI_SANDBOX = true;
+
+  const statusEl = document.getElementById("status");
+  const detailsEl = document.getElementById("details");
+  const payButton = document.getElementById("payButton");
+
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("token");
+
+  function setStatus(text, className) {
+    statusEl.textContent = text;
+    statusEl.className = className || "";
+  }
+
+  function showError(text) {
+    setStatus(text, "error");
+    payButton.classList.add("hidden");
+  }
+
+  async function postFunction(name, body) {
+    const response = await fetch(SUPABASE_URL + "/functions/v1/" + name, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": "Bearer " + SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify(body)
+    });
+
+    const text = await response.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch (_) {}
+
+    if (!response.ok) {
+      throw new Error(data.error || data.message || text || ("HTTP " + response.status));
+    }
+    return data;
+  }
+
+  async function getSession() {
+    if (!token) throw new Error("Missing payment session token.");
+    const response = await fetch(
+      SUPABASE_URL + "/functions/v1/payment-session-status?token=" +
+      encodeURIComponent(token),
+      {
+        headers: {
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": "Bearer " + SUPABASE_ANON_KEY
+        }
+      }
+    );
+
+    const text = await response.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch (_) {}
+
+    if (!response.ok) {
+      throw new Error(data.error || data.message || text || ("HTTP " + response.status));
+    }
+    return data;
+  }
+
+  async function startPayment(session) {
+    if (!window.Pi) throw new Error("Pi Browser SDK is unavailable.");
+
+    Pi.init({ version: "2.0", sandbox: PI_SANDBOX });
+
+    const auth = await Pi.authenticate(
+      ["username", "payments"],
+      function (payment) {
+        console.log("Incomplete payment found:", payment);
+        if (payment && payment.identifier) {
+          postFunction("pi-complete", {
+            paymentId: payment.identifier,
+            sessionToken: token
+          }).catch(function (error) {
+            console.error("Incomplete payment recovery failed:", error);
+          });
+        }
+      }
+    );
+
+    if (!auth || !auth.accessToken) {
+      throw new Error("Pi authentication was not completed.");
+    }
+
+    setStatus("Creating Pi payment…");
+
+    const payment = await Pi.createPayment(
+      {
+        amount: Number(session.amountPi),
+        memo: "FileOrganizerPro " + String(session.plan || "").toUpperCase() + " subscription",
+        metadata: { sessionToken: token }
+      },
+      {
+        onReadyForServerApproval: function (paymentId) {
+          postFunction("pi-approve", {
+            paymentId: paymentId,
+            sessionToken: token,
+            accessToken: auth.accessToken
+          }).catch(function (error) {
+            console.error("Approval failed:", error);
+            showError("Payment approval failed. Please try again.");
+          });
+        },
+        onReadyForServerCompletion: function (paymentId, txid) {
+          postFunction("pi-complete", {
+            paymentId: paymentId,
+            txid: txid,
+            sessionToken: token,
+            accessToken: auth.accessToken
+          }).then(function () {
+            setStatus("Payment completed successfully.", "success");
+            detailsEl.textContent = "You can return to FileOrganizerPro.";
+            payButton.classList.add("hidden");
+          }).catch(function (error) {
+            console.error("Completion failed:", error);
+            showError("Payment completion failed. Please try again.");
+          });
+        },
+        onCancel: function (paymentId) {
+          postFunction("pi-cancel", {
+            paymentId: paymentId,
+            sessionToken: token,
+            accessToken: auth.accessToken
+          }).catch(function (error) {
+            console.error("Cancel notification failed:", error);
+          });
+          setStatus("Payment cancelled.");
+          payButton.disabled = false;
+        },
+        onError: function (error) {
+          console.error("Pi payment error:", error);
+          showError("Pi payment could not be started.");
+        }
+      }
+    );
+
+    console.log("Pi payment created:", payment);
+  }
+
+  async function init() {
+    try {
+      const session = await getSession();
+
+      if (session.status === "completed") {
+        setStatus("Payment already completed.", "success");
+        detailsEl.textContent = "You can return to FileOrganizerPro.";
+        return;
+      }
+
+      if (session.status !== "pending") {
+        throw new Error("This payment session is no longer available.");
+      }
+
+      detailsEl.textContent =
+        "Plan: " + String(session.plan || "").toUpperCase() +
+        " · Amount: " + String(session.amountPi) + " Pi";
+
+      payButton.classList.remove("hidden");
+      payButton.addEventListener("click", function () {
+        payButton.disabled = true;
+        startPayment(session).catch(function (error) {
+          console.error(error);
+          showError(error.message || "Unable to start payment.");
+        });
+      });
+
+      setStatus("Ready for Pi payment.");
+    } catch (error) {
+      console.error(error);
+      showError(error.message || "Unable to load checkout.");
+    }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
