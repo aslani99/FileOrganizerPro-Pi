@@ -130,6 +130,7 @@
     if (!window.Pi) throw new Error("Pi Browser SDK is unavailable.");
 
     await Pi.init({ version: "2.0", sandbox: PI_SANDBOX });
+    console.info("[PiCheckout] SDK initialized", { sandbox: PI_SANDBOX });
 
     const auth = await Pi.authenticate(
       ["username", "payments"],
@@ -152,7 +153,7 @@
 
     setStatus("Creating Pi payment…");
 
-    const payment = await Pi.createPayment(
+    const paymentPromise = Pi.createPayment(
       {
         amount: Number(session.amountPi),
         memo: "FileOrganizerPro " + String(session.plan || "").toUpperCase() + " subscription",
@@ -202,6 +203,10 @@
       }
     );
 
+    const payment = await Promise.race([
+      paymentPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Pi payment creation timed out. Check Pi Browser permissions and console logs.")), 45000))
+    ]);
     console.log("Pi payment created:", payment);
   }
 
