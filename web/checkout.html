@@ -139,6 +139,7 @@
       function (payment) {
         console.log("Incomplete payment found:", payment);
         incompletePayment = payment || null;
+        setStatus("Incomplete payment callback fired.");
       }
     );
 
@@ -155,14 +156,16 @@
         incompletePayment.transaction && incompletePayment.transaction.txid;
 
       if (!transactionId) {
-        throw new Error("An incomplete Pi payment was found, but its transaction ID is not available yet.");
+        setStatus("Incomplete Pi payment found — transaction ID is not available yet.");
+        detailsEl.textContent = "Payment ID: " + String(incompletePayment.identifier || "not available");
+        return;
       }
 
       setStatus("Recovering previous Pi payment…");
 
       await postFunction("pi-complete", {
         paymentId: incompletePayment.identifier,
-        txid: transactionId,
+        txId: transactionId,
         sessionToken: token,
         accessToken: auth.accessToken
       });
@@ -191,10 +194,11 @@
           });
         },
         onReadyForServerCompletion: async function (paymentId, txid) {
+          console.log("[PiCheckout] onReadyForServerCompletion fired", { paymentId, txid });
           setStatus("Completing Pi payment…");
           await postFunction("pi-complete", {
             paymentId: paymentId,
-            txid: txid,
+            txId: txid,
             sessionToken: token,
             accessToken: auth.accessToken
           });
@@ -223,7 +227,7 @@
 
     const payment = await Promise.race([
       paymentPromise,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("Pi payment creation timed out. Check Pi Browser permissions and console logs.")), 45000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Pi payment is taking longer than expected. Please keep this page open and check Pi Browser permissions and console logs.")), 180000))
     ]);
     console.log("Pi payment created:", payment);
   }

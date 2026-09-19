@@ -1,0 +1,21 @@
+diff --git a/web/checkout.html b/web/checkout.html
+index 2b67cbf..402b79e 100644
+--- a/web/checkout.html
++++ b/web/checkout.html
+@@ -194,6 +194,7 @@
+           });
+         },
+         onReadyForServerCompletion: async function (paymentId, txid) {
++          console.log("[PiCheckout] onReadyForServerCompletion fired", { paymentId, txid });
+           setStatus("Completing Pi payment…");
+           await postFunction("pi-complete", {
+             paymentId: paymentId,
+@@ -226,7 +227,7 @@
+ 
+     const payment = await Promise.race([
+       paymentPromise,
+-      new Promise((_, reject) => setTimeout(() => reject(new Error("Pi payment creation timed out. Check Pi Browser permissions and console logs.")), 45000))
++      new Promise((_, reject) => setTimeout(() => reject(new Error("Pi payment is taking longer than expected. Please keep this page open and check Pi Browser permissions and console logs.")), 180000))
+     ]);
+     console.log("Pi payment created:", payment);
+   }
