@@ -48,6 +48,92 @@
     }
   </style>
   <script src="https://sdk.minepi.com/pi-sdk.js"></script>
+  <style>
+    #debugPanel {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      max-height: 40vh;
+      overflow-y: auto;
+      background: rgba(0,0,0,.92);
+      color: #7CFC00;
+      font: 11px/1.4 ui-monospace, "SFMono-Regular", Menlo, monospace;
+      padding: 8px;
+      box-sizing: border-box;
+      white-space: pre-wrap;
+      word-break: break-word;
+      z-index: 999999;
+      display: none;
+    }
+    #debugPanel.visible { display: block; }
+    #debugPanel .err { color: #ff6b6b; }
+    #debugPanel .warn { color: #ffd166; }
+    #debugToggle {
+      position: fixed;
+      right: 8px; bottom: 8px;
+      z-index: 1000000;
+      background: #333;
+      color: #fff;
+      border-radius: 20px;
+      padding: 6px 12px;
+      font-size: 12px;
+      opacity: .85;
+    }
+  </style>
+  <script>
+    (function () {
+      "use strict";
+      var panel = null, toggle = null;
+      function ensureUi() {
+        if (panel) return;
+        panel = document.createElement("div");
+        panel.id = "debugPanel";
+        toggle = document.createElement("button");
+        toggle.id = "debugToggle";
+        toggle.type = "button";
+        toggle.textContent = "Debug";
+        toggle.addEventListener("click", function () {
+          panel.classList.toggle("visible");
+        });
+        document.addEventListener("DOMContentLoaded", function () {
+          document.body.appendChild(panel);
+          document.body.appendChild(toggle);
+          panel.classList.add("visible");
+        });
+      }
+      function write(cls, args) {
+        ensureUi();
+        var line = document.createElement("div");
+        if (cls) line.className = cls;
+        try {
+          line.textContent = "[" + new Date().toISOString().slice(11, 19) + "] " +
+            Array.prototype.map.call(args, function (a) {
+              if (typeof a === "string") return a;
+              try { return JSON.stringify(a); } catch (_) { return String(a); }
+            }).join(" ");
+        } catch (_) {
+          line.textContent = "[log error]";
+        }
+        if (panel) {
+          panel.appendChild(line);
+          panel.scrollTop = panel.scrollHeight;
+        }
+      }
+      var origLog = console.log, origWarn = console.warn, origError = console.error, origInfo = console.info;
+      console.log = function () { write("", arguments); origLog.apply(console, arguments); };
+      console.info = function () { write("", arguments); origInfo.apply(console, arguments); };
+      console.warn = function () { write("warn", arguments); origWarn.apply(console, arguments); };
+      console.error = function () { write("err", arguments); origError.apply(console, arguments); };
+      window.addEventListener("error", function (e) {
+        write("err", ["UNCAUGHT ERROR:", e.message, e.filename + ":" + e.lineno]);
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        var reason = e.reason;
+        var msg = (reason && (reason.message || reason.toString)) ? (reason.message || reason.toString()) : String(reason);
+        write("err", ["UNHANDLED PROMISE REJECTION:", msg]);
+      });
+      write("", ["Debug panel ready."]);
+    })();
+  </script>
 </head>
 <body>
   <main>
