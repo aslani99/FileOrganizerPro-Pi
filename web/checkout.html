@@ -132,23 +132,45 @@
     await Pi.init({ version: "2.0", sandbox: PI_SANDBOX });
     console.info("[PiCheckout] SDK initialized", { sandbox: PI_SANDBOX });
 
+    let incompletePayment = null;
+
     const auth = await Pi.authenticate(
       ["username", "payments"],
       function (payment) {
         console.log("Incomplete payment found:", payment);
-        if (payment && payment.identifier) {
-          postFunction("pi-complete", {
-            paymentId: payment.identifier,
-            sessionToken: token
-          }).catch(function (error) {
-            console.error("Incomplete payment recovery failed:", error);
-          });
-        }
+        incompletePayment = payment || null;
       }
     );
 
     if (!auth || !auth.accessToken) {
       throw new Error("Pi authentication was not completed.");
+    }
+
+    // Recover a payment that was already signed but whose server-side
+    // completion did not finish. The previous implementation called
+    // pi-complete before the Pi access token was available, which caused
+    // the recovery request to be rejected as "missing parameter".
+    if (incompletePayment && incompletePayment.identifier) {
+      const transactionId =
+        incompletePayment.transaction && incompletePayment.transaction.txid;
+
+      if (!transactionId) {
+        throw new Error("An incomplete Pi payment was found, but its transaction ID is not available yet.");
+      }
+
+      setStatus("Recovering previous Pi payment…");
+
+      await postFunction("pi-complete", {
+        paymentId: incompletePayment.identifier,
+        txid: transactionId,
+        sessionToken: token,
+        accessToken: auth.accessToken
+      });
+
+      setStatus("Previous payment completed successfully.", "success");
+      detailsEl.textContent = "You can return to FileOrganizerPro.";
+      payButton.classList.add("hidden");
+      return;
     }
 
     setStatus("Creating Pi payment…");
@@ -160,30 +182,26 @@
         metadata: { sessionToken: token }
       },
       {
-        onReadyForServerApproval: function (paymentId) {
-          postFunction("pi-approve", {
+        onReadyForServerApproval: async function (paymentId) {
+          setStatus("Waiting for server approval…");
+          await postFunction("pi-approve", {
             paymentId: paymentId,
             sessionToken: token,
             accessToken: auth.accessToken
-          }).catch(function (error) {
-            console.error("Approval failed:", error);
-            showError("Payment approval failed. Please try again.");
           });
         },
-        onReadyForServerCompletion: function (paymentId, txid) {
-          postFunction("pi-complete", {
+        onReadyForServerCompletion: async function (paymentId, txid) {
+          setStatus("Completing Pi payment…");
+          await postFunction("pi-complete", {
             paymentId: paymentId,
             txid: txid,
             sessionToken: token,
             accessToken: auth.accessToken
-          }).then(function () {
-            setStatus("Payment completed successfully.", "success");
-            detailsEl.textContent = "You can return to FileOrganizerPro.";
-            payButton.classList.add("hidden");
-          }).catch(function (error) {
-            console.error("Completion failed:", error);
-            showError("Payment completion failed. Please try again.");
           });
+
+          setStatus("Payment completed successfully.", "success");
+          detailsEl.textContent = "You can return to FileOrganizerPro.";
+          payButton.classList.add("hidden");
         },
         onCancel: function (paymentId) {
           postFunction("pi-cancel", {
@@ -220,13 +238,17 @@
         return;
       }
 
-      if (session.status !== "pending") {
+      if (session.status !== "pending" && session.status !== "approved") {
         throw new Error("This payment session is no longer available.");
       }
 
       detailsEl.textContent =
         "Plan: " + String(session.plan || "").toUpperCase() +
         " · Amount: " + String(session.amountPi) + " Pi";
+
+      if (session.status === "approved") {
+        setStatus("A previous Pi payment is awaiting completion.");
+      }
 
       payButton.classList.remove("hidden");
       payButton.addEventListener("click", function () {
