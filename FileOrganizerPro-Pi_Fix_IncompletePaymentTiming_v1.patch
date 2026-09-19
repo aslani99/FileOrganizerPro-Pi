@@ -1,0 +1,140 @@
+diff --git a/web/checkout.html b/web/checkout.html
+index 13d0ead..b6b7e86 100644
+--- a/web/checkout.html
++++ b/web/checkout.html
+@@ -212,6 +212,36 @@
+     return data;
+   }
+ 
++  async function recoverIncompletePayment(payment, accessToken) {
++    if (!payment || !payment.identifier) return false;
++
++    const transactionId = payment.transaction && payment.transaction.txid;
++
++    if (!transactionId) {
++      setStatus("Incomplete Pi payment found — transaction ID is not available yet.");
++      detailsEl.textContent = "Payment ID: " + String(payment.identifier || "not available");
++      return true;
++    }
++
++    setStatus("Recovering previous Pi payment…");
++    console.log("[PiCheckout] recovering incomplete payment", {
++      paymentId: payment.identifier,
++      txid: transactionId
++    });
++
++    await postFunction("pi-complete", {
++      paymentId: payment.identifier,
++      txId: transactionId,
++      sessionToken: token,
++      accessToken: accessToken
++    });
++
++    setStatus("Previous payment completed successfully.", "success");
++    detailsEl.textContent = "You can return to FileOrganizerPro.";
++    payButton.classList.add("hidden");
++    return true;
++  }
++
+   async function startPayment(session) {
+     if (!window.Pi) throw new Error("Pi Browser SDK is unavailable.");
+ 
+@@ -219,6 +249,27 @@
+     console.info("[PiCheckout] SDK initialized", { sandbox: PI_SANDBOX });
+ 
+     let incompletePayment = null;
++    let accessTokenRef = null;
++    // Pi's SDK can report an incomplete payment either during authenticate()
++    // OR later, when a new createPayment() is attempted and gets blocked by
++    // an older unfinished payment. This callback can therefore fire before
++    // we have an access token (during authenticate) or after (during
++    // createPayment) — recover immediately in both cases instead of only
++    // checking once, synchronously, right after authenticate() resolves.
++    let recoveryPromise = null;
++
++    function waitForIncompletePayment(timeoutMs) {
++      return new Promise(function (resolve) {
++        const start = Date.now();
++        (function poll() {
++          if (incompletePayment || Date.now() - start >= timeoutMs) {
++            resolve();
++            return;
++          }
++          setTimeout(poll, 250);
++        })();
++      });
++    }
+ 
+     const auth = await Pi.authenticate(
+       ["username", "payments"],
+@@ -226,39 +277,26 @@
+         console.log("Incomplete payment found:", payment);
+         incompletePayment = payment || null;
+         setStatus("Incomplete payment callback fired.");
++        if (accessTokenRef && incompletePayment && !recoveryPromise) {
++          recoveryPromise = recoverIncompletePayment(incompletePayment, accessTokenRef).catch(function (error) {
++            console.error("Recovery failed:", error);
++            showError(error.message || "Unable to recover previous payment.");
++          });
++        }
+       }
+     );
+ 
+     if (!auth || !auth.accessToken) {
+       throw new Error("Pi authentication was not completed.");
+     }
++    accessTokenRef = auth.accessToken;
+ 
+     // Recover a payment that was already signed but whose server-side
+     // completion did not finish. The previous implementation called
+     // pi-complete before the Pi access token was available, which caused
+     // the recovery request to be rejected as "missing parameter".
+     if (incompletePayment && incompletePayment.identifier) {
+-      const transactionId =
+-        incompletePayment.transaction && incompletePayment.transaction.txid;
+-
+-      if (!transactionId) {
+-        setStatus("Incomplete Pi payment found — transaction ID is not available yet.");
+-        detailsEl.textContent = "Payment ID: " + String(incompletePayment.identifier || "not available");
+-        return;
+-      }
+-
+-      setStatus("Recovering previous Pi payment…");
+-
+-      await postFunction("pi-complete", {
+-        paymentId: incompletePayment.identifier,
+-        txId: transactionId,
+-        sessionToken: token,
+-        accessToken: auth.accessToken
+-      });
+-
+-      setStatus("Previous payment completed successfully.", "success");
+-      detailsEl.textContent = "You can return to FileOrganizerPro.";
+-      payButton.classList.add("hidden");
++      await (recoveryPromise || recoverIncompletePayment(incompletePayment, auth.accessToken));
+       return;
+     }
+ 
+@@ -306,7 +344,21 @@
+         },
+         onError: function (error) {
+           console.error("Pi payment error:", error);
+-          showError("Pi payment could not be started.");
++          // createPayment() itself can be the moment Pi's SDK discovers an
++          // older blocking incomplete payment: it fires onError for the new
++          // payment, and separately (observed to sometimes land AFTER
++          // onError) invokes the incomplete-payment callback above with the
++          // old payment's data. Give that callback a brief grace window to
++          // arrive before giving up, instead of showing a dead-end error
++          // that would just repeat on retry.
++          (recoveryPromise || waitForIncompletePayment(3000).then(function () {
++            if (incompletePayment && incompletePayment.identifier) {
++              return recoverIncompletePayment(incompletePayment, accessTokenRef);
++            }
++            throw new Error("Pi payment could not be started.");
++          })).catch(function (finalError) {
++            showError(finalError.message || "Pi payment could not be started.");
++          });
+         }
+       }
+     );
