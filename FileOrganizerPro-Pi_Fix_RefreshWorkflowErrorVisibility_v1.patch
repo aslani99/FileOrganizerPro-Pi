@@ -1,0 +1,20 @@
+diff --git a/.github/workflows/refresh-pi-rate.yml b/.github/workflows/refresh-pi-rate.yml
+index 1fa1d31..31891b8 100644
+--- a/.github/workflows/refresh-pi-rate.yml
++++ b/.github/workflows/refresh-pi-rate.yml
+@@ -11,7 +11,13 @@ jobs:
+     steps:
+       - name: Call refresh-pi-rate function
+         run: |
+-          curl -sS -X POST "https://folgwdsswsoykukxubzf.supabase.co/functions/v1/refresh-pi-rate" \
++          response=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" -X POST "https://folgwdsswsoykukxubzf.supabase.co/functions/v1/refresh-pi-rate" \
+             -H "x-cron-secret: ${{ secrets.PI_RATE_CRON_SECRET }}" \
+             -H "Content-Type: application/json" \
+-            -d '{}'
++            -d '{}')
++          echo "$response"
++          status=$(echo "$response" | grep -o 'HTTP_STATUS:[0-9]*' | cut -d: -f2)
++          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
++            echo "refresh-pi-rate call failed with HTTP status $status"
++            exit 1
++          fi
