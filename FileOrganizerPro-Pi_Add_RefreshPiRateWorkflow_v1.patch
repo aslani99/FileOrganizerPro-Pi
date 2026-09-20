@@ -1,0 +1,23 @@
+diff --git a/.github/workflows/refresh-pi-rate.yml b/.github/workflows/refresh-pi-rate.yml
+new file mode 100644
+index 0000000..1fa1d31
+--- /dev/null
++++ b/.github/workflows/refresh-pi-rate.yml
+@@ -0,0 +1,17 @@
++name: Refresh Pi Rate
++
++on:
++  schedule:
++    - cron: "*/10 * * * *"
++  workflow_dispatch: {}
++
++jobs:
++  refresh:
++    runs-on: ubuntu-latest
++    steps:
++      - name: Call refresh-pi-rate function
++        run: |
++          curl -sS -X POST "https://folgwdsswsoykukxubzf.supabase.co/functions/v1/refresh-pi-rate" \
++            -H "x-cron-secret: ${{ secrets.PI_RATE_CRON_SECRET }}" \
++            -H "Content-Type: application/json" \
++            -d '{}'
