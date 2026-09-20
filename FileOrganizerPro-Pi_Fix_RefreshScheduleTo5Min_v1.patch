@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/refresh-pi-rate.yml b/.github/workflows/refresh-pi-rate.yml
+index 96492af..06c143e 100644
+--- a/.github/workflows/refresh-pi-rate.yml
++++ b/.github/workflows/refresh-pi-rate.yml
+@@ -2,7 +2,7 @@ name: Refresh Pi Rate
+ 
+ on:
+   schedule:
+-    - cron: "*/1 * * * *"
++    - cron: "*/5 * * * *"
+   workflow_dispatch: {}
+ 
+ jobs:
