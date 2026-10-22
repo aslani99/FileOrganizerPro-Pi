@@ -12,7 +12,7 @@
   }
   window.addEventListener('error', () => trace('BROWSER_SCRIPT_ERROR'));
   window.addEventListener('unhandledrejection', () => trace('UNHANDLED_ASYNC_ERROR'));
-  trace('CHECKOUT_DIAG_1');
+  trace('CHECKOUT_DIAG_2');
   trace(cfg?.PI_SANDBOX === true ? 'SDK_MODE_DESKTOP_SANDBOX' : 'SDK_MODE_PI_BROWSER');
   let busy = false, terminal = false, session, accessToken, recoveryPromise, incompleteSeen = false;
   const show = (text, error = false) => { status.textContent = text; status.className = error ? 'error' : ''; };
@@ -39,6 +39,10 @@
   }
   function recover(payment) {
     trace('INCOMPLETE_PAYMENT_CALLBACK');
+    // A payment identifier is not a session capability or credential. Display only this allowlisted field.
+    const callbackId = payment?.identifier;
+    trace(typeof callbackId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(callbackId) ? 'INCOMPLETE_PAYMENT_ID: ' + callbackId : 'INVALID_CALLBACK_PAYMENT_ID');
+    trace(payment?.transaction?.txid ? 'CALLBACK_HAS_TRANSACTION' : 'CALLBACK_NO_TRANSACTION');
     incompleteSeen = true;
     if (recoveryPromise) return recoveryPromise;
     if (!payment?.identifier || !payment.transaction?.txid) {
