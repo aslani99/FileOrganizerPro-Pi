@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
+  <meta name="referrer" content="no-referrer">
+  <script>
+    // Preserve older root checkout links without sending capabilities to external hosts.
+    const checkoutToken = new URLSearchParams(location.search).get('token');
+    if (checkoutToken) location.replace('checkout.html?token=' + encodeURIComponent(checkoutToken));
+  </script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#111827" />
@@ -8,7 +14,7 @@
 <meta name="description" content="سازماندهی هوشمند فایل‌های ویندوز با کپی امن، تشخیص تکراری و سازماندهی پیوسته." />
 <link rel="stylesheet" href="assets/style.css" />
 <script src="https://sdk.minepi.com/pi-sdk.js"></script>
-<script src="config.js"></script>
+<script src="config.js?v=20261022"></script>
 </head>
 <body>
 <div class="page-shell">

@@ -1,23 +1,9 @@
-name: Refresh Pi Rate
-
+# cron-job.org owns the current rate schedule. Do not call the retired Supabase project.
+name: Refresh Pi Rate (retired)
 on:
-  schedule:
-    - cron: "*/5 * * * *"
-  workflow_dispatch: {}
-
+  workflow_dispatch:
 jobs:
-  refresh:
+  notice:
     runs-on: ubuntu-latest
     steps:
-      - name: Call refresh-pi-rate function
-        run: |
-          response=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" -X POST "https://folgwdsswsoykukxubzf.supabase.co/functions/v1/refresh-pi-rate" \
-            -H "x-cron-secret: ${{ secrets.PI_RATE_CRON_SECRET }}" \
-            -H "Content-Type: application/json" \
-            -d '{}')
-          echo "$response"
-          status=$(echo "$response" | grep -o 'HTTP_STATUS:[0-9]*' | cut -d: -f2)
-          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
-            echo "refresh-pi-rate call failed with HTTP status $status"
-            exit 1
-          fi
+      - run: echo "Rate refresh is scheduled in cron-job.org for the current Supabase project."
