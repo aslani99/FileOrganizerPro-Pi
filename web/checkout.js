@@ -3,6 +3,14 @@
   const cfg = window.FOP_CONFIG;
   const token = new URLSearchParams(location.search).get('token');
   const status = document.getElementById('status'), details = document.getElementById('details'), button = document.getElementById('payButton');
+  const requestedLanguage = (new URLSearchParams(location.search).get('lang') || navigator.language || 'en').toLowerCase();
+  const recoveryLanguage = requestedLanguage.startsWith('zh')
+    ? (/hant|tw|hk/.test(requestedLanguage) ? 'zh-hant' : 'zh-hans') : requestedLanguage.split('-')[0];
+  const recoveryText = window.FOP_RECOVERY_TEXT?.[recoveryLanguage] || window.FOP_RECOVERY_TEXT?.en;
+  function recoveryMessage(index, error = false) {
+    show(recoveryText[index], error);
+    status.dir = ['fa','ar','ur'].includes(recoveryLanguage) ? 'rtl' : 'ltr';
+  }
   const diagnosticRows = [];
   function trace(code) {
     // Only call with predefined stage codes; never log SDK payloads, tokens or raw errors.
@@ -12,9 +20,9 @@
   }
   window.addEventListener('error', () => trace('BROWSER_SCRIPT_ERROR'));
   window.addEventListener('unhandledrejection', () => trace('UNHANDLED_ASYNC_ERROR'));
-  trace('CHECKOUT_DIAG_2');
+  trace('CHECKOUT_RECOVERY_3');
   trace(cfg?.PI_SANDBOX === true ? 'SDK_MODE_DESKTOP_SANDBOX' : 'SDK_MODE_PI_BROWSER');
-  let busy = false, terminal = false, session, accessToken, recoveryPromise, incompleteSeen = false;
+  let busy = false, terminal = false, session, accessToken, recoveryPromise, incompleteSeen = false, incompletePayment, awaitingPaymentId;
   const show = (text, error = false) => { status.textContent = text; status.className = error ? 'error' : ''; };
   async function request(name, body) {
     trace('API_REQUEST_' + name.split('?')[0]);
@@ -39,24 +47,37 @@
   }
   function recover(payment) {
     trace('INCOMPLETE_PAYMENT_CALLBACK');
-    // A payment identifier is not a session capability or credential. Display only this allowlisted field.
-    const callbackId = payment?.identifier;
-    trace(typeof callbackId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(callbackId) ? 'INCOMPLETE_PAYMENT_ID: ' + callbackId : 'INVALID_CALLBACK_PAYMENT_ID');
-    trace(payment?.transaction?.txid ? 'CALLBACK_HAS_TRANSACTION' : 'CALLBACK_NO_TRANSACTION');
     incompleteSeen = true;
+    incompletePayment = payment;
+    // Authentication can deliver this callback before its promise resolves.
+    // Process it after we have the verified Pi identity.
+    if (!accessToken) return Promise.resolve();
+    return reconcile(payment?.identifier);
+  }
+  async function reconcile(paymentId, cancel = false) {
     if (recoveryPromise) return recoveryPromise;
-    if (!payment?.identifier || !payment.transaction?.txid) {
-      trace('INCOMPLETE_WITHOUT_TRANSACTION');
-      terminal = true; button.disabled = true;
-      show('A previous payment is unfinished. Check its status in Pi Wallet before starting another payment.', true);
-      return Promise.resolve();
-    }
-    // The backend verifies the transaction and uses its metadata to recover the original session.
-    // This can run before Pi.authenticate resolves; no browser-supplied identity is trusted.
     trace('RECOVERY_STARTED');
-    show('Recovering an earlier payment…');
-    recoveryPromise = request('pi-complete', {paymentId:payment.identifier, txId:payment.transaction.txid, ...(accessToken?{accessToken}:{})})
-      .then(finish).catch(error => { trace('RECOVERY_FAILED'); terminal = true; button.disabled = true; show('Recovery pending: ' + error.message + '. Reopen this link to retry.', true); });
+    recoveryMessage(3);
+    recoveryPromise = request('pi-complete', {recovery:true, cancel, sessionToken:token, ...(paymentId?{paymentId}:{}), accessToken})
+      .then(result => {
+        if (result.awaitingConfirmation) {
+          awaitingPaymentId = result.paymentId;
+          terminal = false;
+          button.textContent = recoveryText[0];
+          recoveryMessage(2);
+        } else if (result.cancelled) {
+          awaitingPaymentId = null;
+          terminal = true; button.disabled = true;
+          show('Payment cancelled. Create a new checkout in the desktop app.');
+        } else { awaitingPaymentId = null; finish(result); }
+      }).catch(error => {
+        trace('RECOVERY_FAILED');
+        terminal = false;
+        show(recoveryText[4] + ' (' + error.message + ')', true);
+      }).finally(() => {
+        recoveryPromise = null;
+        if (!busy && !terminal) button.disabled = false;
+      });
     return recoveryPromise;
   }
   async function callback(name, body, success) {
@@ -67,6 +88,11 @@
     if (busy || terminal) return;
     busy = true; button.disabled = true;
     try {
+      if (awaitingPaymentId && accessToken) {
+        if (window.confirm(recoveryText[1])) await reconcile(awaitingPaymentId, true);
+        return;
+      }
+      incompleteSeen = false; incompletePayment = null; accessToken = null;
       session = await loadSession();
       if (session.status === 'completed') { finish(session); return; }
       if (!['pending','approved'].includes(session.status)) { terminal = true; throw new Error('This link is closed. Create a new checkout in the desktop app.'); }
@@ -94,9 +120,9 @@
       accessToken = auth?.accessToken;
       trace(accessToken ? 'AUTH_TOKEN_PRESENT' : 'AUTH_TOKEN_MISSING');
       if (!accessToken) throw new Error('Pi authentication was not completed.');
-      if (incompleteSeen) { await recoveryPromise; return; }
+      if (incompleteSeen) { await reconcile(incompletePayment?.identifier); return; }
       if (session.status === 'approved' || session.hasLinkedPayment) {
-        terminal = true; show('A payment is already linked. Keep this page open for Pi recovery, or reopen it to retry.', true); return;
+        await reconcile(); return;
       }
       const amount = Number(session.amountPi);
       if (!Number.isFinite(amount) || amount <= 0) throw new Error('Invalid payment amount.');
