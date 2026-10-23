@@ -20,9 +20,9 @@
   }
   window.addEventListener('error', () => trace('BROWSER_SCRIPT_ERROR'));
   window.addEventListener('unhandledrejection', () => trace('UNHANDLED_ASYNC_ERROR'));
-  trace('CHECKOUT_RECOVERY_3');
+  trace('CHECKOUT_RECOVERY_4');
   trace(cfg?.PI_SANDBOX === true ? 'SDK_MODE_DESKTOP_SANDBOX' : 'SDK_MODE_PI_BROWSER');
-  let busy = false, terminal = false, session, accessToken, recoveryPromise, incompleteSeen = false, incompletePayment, awaitingPaymentId;
+  let busy = false, terminal = false, paymentInFlight = false, session, accessToken, recoveryPromise, incompleteSeen = false, incompletePayment;
   const show = (text, error = false) => { status.textContent = text; status.className = error ? 'error' : ''; };
   async function request(name, body) {
     trace('API_REQUEST_' + name.split('?')[0]);
@@ -54,29 +54,27 @@
     if (!accessToken) return Promise.resolve();
     return reconcile(payment?.identifier);
   }
-  async function reconcile(paymentId, cancel = false) {
+  async function reconcile(paymentId, allowReplacement = false) {
     if (recoveryPromise) return recoveryPromise;
     trace('RECOVERY_STARTED');
     recoveryMessage(3);
-    recoveryPromise = request('pi-complete', {recovery:true, cancel, sessionToken:token, ...(paymentId?{paymentId}:{}), accessToken})
+    recoveryPromise = request('pi-complete', {recovery:true, sessionToken:token, ...(paymentId?{paymentId}:{}), accessToken})
       .then(result => {
         if (result.awaitingConfirmation) {
-          awaitingPaymentId = result.paymentId;
-          terminal = false;
-          button.textContent = recoveryText[0];
+          if (allowReplacement && !session.hasLinkedPayment && session.status === 'pending') return true;
+          terminal = true; button.disabled = true; button.classList.add('hidden');
           recoveryMessage(2);
         } else if (result.cancelled) {
-          awaitingPaymentId = null;
           terminal = true; button.disabled = true;
-          show('Payment cancelled. Create a new checkout in the desktop app.');
-        } else { awaitingPaymentId = null; finish(result); }
+          recoveryMessage(5);
+        } else { finish(result); }
       }).catch(error => {
         trace('RECOVERY_FAILED');
         terminal = false;
         show(recoveryText[4] + ' (' + error.message + ')', true);
       }).finally(() => {
         recoveryPromise = null;
-        if (!busy && !terminal) button.disabled = false;
+        if (!busy && !terminal && !paymentInFlight) button.disabled = false;
       });
     return recoveryPromise;
   }
@@ -85,17 +83,13 @@
     catch (error) { show('Payment needs attention: ' + error.message + '. Keep this page open for retry.', true); throw error; }
   }
   button.addEventListener('click', async () => {
-    if (busy || terminal) return;
+    if (busy || terminal || paymentInFlight) return;
     busy = true; button.disabled = true;
     try {
-      if (awaitingPaymentId && accessToken) {
-        if (window.confirm(recoveryText[1])) await reconcile(awaitingPaymentId, true);
-        return;
-      }
       incompleteSeen = false; incompletePayment = null; accessToken = null;
       session = await loadSession();
       if (session.status === 'completed') { finish(session); return; }
-      if (!['pending','approved'].includes(session.status)) { terminal = true; throw new Error('This link is closed. Create a new checkout in the desktop app.'); }
+      if (!['pending','approved'].includes(session.status)) { terminal = true; recoveryMessage(session.status === 'cancelled' ? 5 : 6); return; }
       if (!window.Pi) throw new Error('Open this link in Pi Browser.');
       trace('SDK_INIT_STARTED');
       await Pi.init({version:'2.0', sandbox:cfg.PI_SANDBOX === true});
@@ -120,7 +114,7 @@
       accessToken = auth?.accessToken;
       trace(accessToken ? 'AUTH_TOKEN_PRESENT' : 'AUTH_TOKEN_MISSING');
       if (!accessToken) throw new Error('Pi authentication was not completed.');
-      if (incompleteSeen) { await reconcile(incompletePayment?.identifier); return; }
+      if (incompleteSeen && await reconcile(incompletePayment?.identifier, true) !== true) return;
       if (session.status === 'approved' || session.hasLinkedPayment) {
         await reconcile(); return;
       }
@@ -128,6 +122,7 @@
       if (!Number.isFinite(amount) || amount <= 0) throw new Error('Invalid payment amount.');
       show('Creating payment…');
       trace('CREATE_PAYMENT_CALLED');
+      paymentInFlight = true;
       await Pi.createPayment({amount, memo:'FileOrganizerPro ' + session.plan, metadata:{sessionToken:token}}, {
         onReadyForServerApproval: id => callback('pi-approve',{sessionToken:token,paymentId:id,accessToken},() => show('Approved. Confirm the payment in Pi.')),
         onReadyForServerCompletion: (id,txId) => callback('pi-complete',{sessionToken:token,paymentId:id,txId,accessToken},finish),
@@ -136,7 +131,7 @@
           try {
             const result = await request('pi-cancel',{sessionToken:token,paymentId:id,accessToken});
             if(result.alreadyCompleted) finish(await loadSession());
-            else show('Payment cancelled. Create a new checkout in the desktop app.');
+            else recoveryMessage(5);
           } catch(error) { show('Cancellation not confirmed: ' + error.message + '. Reopen this link to check the payment.',true); }
         },
         onError: () => {
@@ -145,16 +140,16 @@
           if (!incompleteSeen) show('Pi could not finish the payment. Keep this page open for recovery, or reopen it to retry.',true);
         }
       });
-    } catch(error) { trace('PAYMENT_FLOW_FAILED'); show(error.message || 'Unable to start payment.',true); }
-    finally { busy = false; if (!terminal) button.disabled = false; }
+    } catch(error) { paymentInFlight = false; trace('PAYMENT_FLOW_FAILED'); show(error.message || 'Unable to start payment.',true); }
+    finally { busy = false; if (!terminal && !paymentInFlight) button.disabled = false; }
   });
   (async () => {
     try {
-      if (!token || token.length > 512) throw new Error('Missing or invalid payment link. Generate a new QR code in FileOrganizerPro.');
+      if (!token || token.length > 512) throw new Error(recoveryText[6]);
       if (!cfg?.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) throw new Error('Checkout configuration is missing.');
       session = await loadSession();
       if (session.status === 'completed') { finish(session); return; }
-      if (!['pending','approved'].includes(session.status)) throw new Error('This payment link is closed or expired. Generate a new QR code.');
+      if (!['pending','approved'].includes(session.status)) { terminal = true; recoveryMessage(session.status === 'cancelled' ? 5 : 6); return; }
       details.textContent = 'Plan: ' + session.plan + ' · Amount: ' + session.amountPi + ' Pi';
       trace('SESSION_READY');
       show('Ready. Continue in Pi Browser.'); button.classList.remove('hidden');
